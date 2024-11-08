@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-ARG BASEIMAGE
 
 # "builder-base" can be overriden using dockerb buildx's --build-context flag,
 # by users who want to use a different images for the builder. E.g. if you need to use an older OS
@@ -20,19 +19,13 @@ ARG BASEIMAGE
 # Must override builder-base, not builder, since the latter is referred to later in the file and so must not be
 # directly replaced. See here, and note that "stage" parameter mentioned there has been renamed to
 # "build-context": https://github.com/docker/buildx/pull/904#issuecomment-1005871838
-FROM nvcr.io/nvidia/cuda:12.5.0-devel-ubuntu22.04 as builder-base
+FROM golang:1.23-bookworm@sha256:2341ddffd3eddb72e0aebab476222fbc24d4a507c4d490a51892ec861bdb71fc as builder-base
 FROM builder-base as builder
 LABEL maintainer="Andy Xie <andy.xning@gmail.com>"
 
 ARG TARGETARCH
 
-RUN apt update
-RUN apt-get -y install git
-
-COPY go1.22.4.linux-amd64.tar.gz .
-RUN rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.4.linux-amd64.tar.gz
-
-ENV GOPATH /usr/local/go
+ENV GOPATH /gopath/
 ENV PATH $GOPATH/bin:$PATH
 
 RUN apt-get update --fix-missing && apt-get --yes install libsystemd-dev gcc-aarch64-linux-gnu
@@ -42,12 +35,11 @@ COPY . /gopath/src/k8s.io/node-problem-detector/
 WORKDIR /gopath/src/k8s.io/node-problem-detector
 RUN GOARCH=${TARGETARCH} make bin/node-problem-detector bin/health-checker bin/log-counter
 
-ARG BASEIMAGE
-FROM --platform=${TARGETPLATFORM} ${BASEIMAGE}
+FROM --platform=${TARGETPLATFORM} registry.k8s.io/build-image/debian-base:bookworm-v1.0.4@sha256:0a17678966f63e82e9c5e246d9e654836a33e13650a698adefede61bb5ca099e as base
 
 LABEL maintainer="Random Liu <lantaol@google.com>"
 
-#RUN clean-install util-linux bash libsystemd-dev
+RUN clean-install util-linux bash libsystemd-dev
 
 # Avoid symlink of /etc/localtime.
 RUN test -h /etc/localtime && rm -f /etc/localtime && cp /usr/share/zoneinfo/UTC /etc/localtime || true
@@ -58,6 +50,4 @@ ARG LOGCOUNTER
 COPY --from=builder /gopath/src/k8s.io/node-problem-detector/bin/health-checker /gopath/src/k8s.io/node-problem-detector/${LOGCOUNTER} /home/kubernetes/bin/
 
 COPY --from=builder /gopath/src/k8s.io/node-problem-detector/config/ /config
-COPY --from=builder /gopath/src/k8s.io/node-problem-detector/config/plugin/*.sh /config/plugin
-WORKDIR /
-ENTRYPOINT ["/node-problem-detector", "--config.custom-plugin-monitor=/config/custom-plugin-gpu-count.json"]
+ENTRYPOINT ["/node-problem-detector", "--config.system-log-monitor=/config/kernel-monitor.json,/config/readonly-monitor.json"]

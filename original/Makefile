@@ -15,29 +15,27 @@
 # Build the node-problem-detector image.
 
 .PHONY: all \
-	vet fmt version test e2e-test \
-	build-binaries build-container build-tar build \
-	docker-builder build-in-docker \
-	push-container push-tar push release clean depup \
-	print-tar-sha-md5
+        vet fmt version test e2e-test \
+        build-binaries build-container build-tar build \
+        docker-builder build-in-docker \
+        push-container push-tar push release clean depup \
+        print-tar-sha-md5
 
 all: build
 
 # PLATFORMS is the set of OS_ARCH that NPD can build against.
-LINUX_PLATFORMS=linux_amd64
-DOCKER_PLATFORMS=linux/amd64
+LINUX_PLATFORMS=linux_amd64 linux_arm64
+DOCKER_PLATFORMS=linux/amd64,linux/arm64
 PLATFORMS=$(LINUX_PLATFORMS) windows_amd64
 
 # VERSION is the version of the binary.
 VERSION?=$(shell if [ -d .git ]; then echo `git describe --tags --dirty`; else echo "UNKNOWN"; fi)
 
 # TAG is the tag of the container image, default to binary version.
-#TTAG?=$(VERSION)_1
-TAG?=v1
+TAG?=$(VERSION)
 
 # REGISTRY is the container registry to push into.
-#REGISTRY?=gcr.io/k8s-staging-npd
-REGISTRY?=npdcustom.azurecr.io/k8s-staging-npd
+REGISTRY?=gcr.io/k8s-staging-npd
 
 # UPLOAD_PATH is the cloud storage path to upload release tar.
 UPLOAD_PATH?=gs://kubernetes-release
@@ -75,10 +73,6 @@ else ifeq ($(shell go env GOHOSTOS), windows)
 ENABLE_JOURNALD=0
 endif
 
-# Set default base image to Debian 12 (Bookworm)
-#BASEIMAGE:=registry.k8s.io/build-image/debian-base:bookworm-v1.0.3
-BASEIMAGE:=nvcr.io/nvidia/cuda:12.5.0-devel-ubuntu22.04
-
 # Disable cgo by default to make the binary statically linked.
 CGO_ENABLED:=0
 
@@ -114,10 +108,9 @@ else
 endif
 
 vet:
-		go list -tags "$(HOST_PLATFORM_BUILD_TAGS)" ./... | \
+	go list -tags "$(HOST_PLATFORM_BUILD_TAGS)" ./... | \
 		grep -v "./vendor/*" | \
 		xargs go vet -tags "$(HOST_PLATFORM_BUILD_TAGS)"
-
 
 fmt:
 	find . -type f -name "*.go" | grep -v "./vendor/*" | xargs gofmt -s -w -l
@@ -243,7 +236,7 @@ build-binaries: $(ALL_BINARIES)
 
 build-container: clean Dockerfile
 	docker buildx create --platform $(DOCKER_PLATFORMS) --use
-	docker buildx build --platform $(DOCKER_PLATFORMS) -t $(IMAGE) --build-arg BASEIMAGE=$(BASEIMAGE) --build-arg LOGCOUNTER=$(LOGCOUNTER) .
+	docker buildx build --platform $(DOCKER_PLATFORMS) -t $(IMAGE) --build-arg LOGCOUNTER=$(LOGCOUNTER) .
 
 $(TARBALL): ./bin/node-problem-detector ./bin/log-counter ./bin/health-checker ./test/bin/problem-maker
 	tar -zcvf $(TARBALL) bin/ config/ test/e2e-install.sh test/bin/problem-maker
@@ -255,7 +248,7 @@ build-tar: $(TARBALL) $(ALL_TARBALLS)
 build: build-container build-tar
 
 docker-builder:
-	docker build -t npd-builder . --target=builder --build-arg BASEIMAGE=$(BASEIMAGE)
+	docker build -t npd-builder . --target=builder
 
 build-in-docker: clean docker-builder
 	docker run \
@@ -268,7 +261,7 @@ ifneq (,$(findstring gcr.io,$(REGISTRY)))
 	gcloud auth configure-docker
 endif
 	# Build should be cached from build-container
-	docker buildx build --push --platform $(DOCKER_PLATFORMS) -t $(IMAGE) --build-arg BASEIMAGE=$(BASEIMAGE) --build-arg LOGCOUNTER=$(LOGCOUNTER) .
+	docker buildx build --push --platform $(DOCKER_PLATFORMS) -t $(IMAGE) --build-arg LOGCOUNTER=$(LOGCOUNTER) .
 
 push-tar: build-tar
 	gsutil cp $(TARBALL) $(UPLOAD_PATH)/node-problem-detector/
