@@ -28,7 +28,7 @@ LINUX_PLATFORMS=linux_amd64
 DOCKER_PLATFORMS=linux/amd64
 PLATFORMS=$(LINUX_PLATFORMS) windows_amd64
 
-# VERSION is the version of the binary.
+# VERSION is the version of the binary.`
 VERSION?=$(shell if [ -d .git ]; then echo `git describe --tags --dirty`; else echo "UNKNOWN"; fi)
 
 # TAG is the tag of the container image, default to binary version.
@@ -264,18 +264,18 @@ build-in-docker: clean docker-builder
 
 push-container: build-container
 	# So we can push to docker hub by setting REGISTRY
-ifneq (,$(findstring gcr.io,$(REGISTRY)))
-	gcloud auth configure-docker
-endif
+# ifneq (,$(findstring gcr.io,$(REGISTRY)))
+# 	gcloud auth configure-docker
+# endif
 	# Build should be cached from build-container
 	docker buildx build --push --platform $(DOCKER_PLATFORMS) -t $(IMAGE) --build-arg BASEIMAGE=$(BASEIMAGE) --build-arg LOGCOUNTER=$(LOGCOUNTER) .
 
-push-tar: build-tar
-	gsutil cp $(TARBALL) $(UPLOAD_PATH)/node-problem-detector/
-	gsutil cp node-problem-detector-$(VERSION)-*.tar.gz* $(UPLOAD_PATH)/node-problem-detector/
+# push-tar: build-tar
+# 	gsutil cp $(TARBALL) $(UPLOAD_PATH)/node-problem-detector/
+# 	gsutil cp node-problem-detector-$(VERSION)-*.tar.gz* $(UPLOAD_PATH)/node-problem-detector/
 
 # `make push` is used by presubmit and CI jobs.
-push: push-container push-tar
+push: push-container #push-tar
 
 # `make release` is used when releasing a new NPD version.
 release: push-container build-tar print-tar-sha-md5
